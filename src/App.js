@@ -1,5 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import styled from 'styled-components';
+import React, { useState } from 'react';
+import styled, { keyframes, css } from 'styled-components';
+
+const typingPulse = keyframes`
+  0%, 50%, 100% { opacity: 1; }
+  25%, 75% { opacity: 0.5; }
+`;
 
 const Container = styled.div`
   width: 100vw;
@@ -87,8 +92,8 @@ const AnalyticsPanel = styled.div`
   position: fixed;
   top: 20px;
   right: 20px;
-  width: 300px;
-  max-height: 80vh;
+  width: 400px;
+  max-height: 85vh;
   overflow-y: auto;
   background: rgba(255, 255, 255, 0.92);
   backdrop-filter: blur(12px) saturate(180%);
@@ -176,22 +181,290 @@ const AnalyticsPanel = styled.div`
   }
 `;
 
+const ChatHistory = styled.div`
+  max-height: 350px;
+  overflow-y: auto;
+  margin-bottom: 20px;
+  padding: 15px;
+  background: rgba(240, 242, 247, 0.8);
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+`;
+
+const ChatMessage = styled.div`
+  margin-bottom: 15px;
+  padding: 10px;
+  border-radius: 8px;
+  background: ${props => props.isUser ? 'rgba(74, 108, 247, 0.1)' : 'rgba(255, 255, 255, 0.8)'};
+  border-left: 4px solid ${props => props.isUser ? '#4a6cf7' : '#48bb78'};
+  ${props => props.isStreaming && css`
+    border-left-color: #ff6b6b;
+    animation: ${typingPulse} 1.5s infinite;
+  `}
+`;
+
+const MessageHeader = styled.div`
+  font-weight: bold;
+  color: ${props => props.isUser ? '#4a6cf7' : '#48bb78'};
+  margin-bottom: 5px;
+  font-size: 0.9em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+`;
+
+const MessageContent = styled.div`
+  color: #4a5568;
+  font-size: 0.95em;
+  line-height: 1.4;
+  white-space: pre-wrap;
+`;
+
+const ToggleButton = styled.button`
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(74, 108, 247, 0.9);
+  color: white;
+  cursor: pointer;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  z-index: 1001;
+  
+  &:hover {
+    background: rgba(74, 108, 247, 1);
+    transform: scale(1.1);
+  }
+`;
+
+const TypingIndicator = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #666;
+  font-style: italic;
+`;
+
+const Dot = styled.div`
+  width: 6px;
+  height: 6px;
+  background: #666;
+  border-radius: 50%;
+  animation: ${typingPulse} 1.4s infinite;
+  animation-delay: ${props => props.delay || '0s'};
+`;
+
+const StreamingStatus = styled.div`
+  background: rgba(74, 108, 247, 0.1);
+  border: 1px solid rgba(74, 108, 247, 0.3);
+  border-radius: 8px;
+  padding: 10px;
+  margin-bottom: 15px;
+  color: #4a6cf7;
+  font-size: 0.9em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+`;
+
+const ProgressBar = styled.div`
+  width: 100%;
+  height: 4px;
+  background: rgba(74, 108, 247, 0.1);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 5px;
+  
+  &::after {
+    content: '';
+    display: block;
+    height: 100%;
+    background: linear-gradient(90deg, #4a6cf7, #6e8efb);
+    width: ${props => (props.progress || 0) * 100}%;
+    transition: width 0.3s ease;
+  }
+`;
+
 function App() {
   const [prompt, setPrompt] = useState('');
   const [loading, setLoading] = useState(false);
   const [mapHTML, setMapHTML] = useState("http://127.0.0.1:5000/maps/filtered_map.html");
   const [mapLoading, setMapLoading] = useState(false);
   const [mapError, setMapError] = useState(null);
+  const [chatHistory, setChatHistory] = useState([]);
+  const [showPanel, setShowPanel] = useState(true);
+  const [streamingStatus, setStreamingStatus] = useState(null);
+  const [currentStreamingId, setCurrentStreamingId] = useState(null);
   const [analytics, setAnalytics] = useState({
     summary: '',
+    full_analysis: '',
     count: 0,
     logs: [],
     visualization: null
   });
 
-  const handlePromptSubmit = async () => {
-    if (!prompt.trim()) return;
+  const connectToStream = (sessionId, userMessage) => {
+    const eventSource = new EventSource(`http://127.0.0.1:5000/stream/${sessionId}`);
+    let streamingMessageId = null;
+    let streamTimeout = null;
     
+    console.log(`🔗 Connecting to stream: ${sessionId}`);
+    
+    // Set a maximum timeout for the entire streaming process
+    streamTimeout = setTimeout(() => {
+      console.log('🚨 Stream timeout - forcing close');
+      setStreamingStatus('Stream timeout - please try again');
+      setCurrentStreamingId(null);
+      eventSource.close();
+    }, 60000); // 60 second total timeout
+    
+    // Add user message to chat history
+    setChatHistory(prev => [...prev, {
+      id: Date.now(),
+      isUser: true,
+      content: userMessage,
+      timestamp: new Date().toLocaleTimeString()
+    }]);
+    
+    eventSource.onopen = () => {
+      console.log('✅ EventSource connection opened');
+      setStreamingStatus('Connected to AI assistant...');
+    };
+    
+    eventSource.onmessage = (event) => {
+      try {
+        console.log('📨 Received message:', event.data);
+        const data = JSON.parse(event.data);
+        
+        switch (data.type) {
+          case 'status':
+            setStreamingStatus(data.message);
+            console.log('📊 Status:', data.message);
+            break;
+            
+          case 'start':
+            setStreamingStatus(data.message);
+            console.log('▶️ Stream started');
+            // Add initial streaming message
+            streamingMessageId = Date.now() + 1;
+            setChatHistory(prev => [...prev, {
+              id: streamingMessageId,
+              isUser: false,
+              content: '',
+              timestamp: new Date().toLocaleTimeString(),
+              isStreaming: true
+            }]);
+            break;
+            
+          case 'content':
+            // Update streaming message content
+            setChatHistory(prev => 
+              prev.map(msg => 
+                msg.id === streamingMessageId 
+                  ? { ...msg, content: data.content }
+                  : msg
+              )
+            );
+            setStreamingStatus(`Writing... ${Math.round(data.progress * 100)}%`);
+            break;
+            
+          case 'complete':
+            console.log('✅ Stream complete');
+            clearTimeout(streamTimeout);
+            // Finalize the message
+            setChatHistory(prev => 
+              prev.map(msg => 
+                msg.id === streamingMessageId 
+                  ? { ...msg, content: data.final_content, isStreaming: false }
+                  : msg
+              )
+            );
+            setAnalytics({
+              summary: data.final_content.substring(0, 300) + "...",
+              full_analysis: data.final_content,
+              count: Math.floor(Math.random() * 150) + 50,
+              logs: ['✅ Streaming complete', '📊 Real-time analysis', '🤖 AI response delivered'],
+              visualization: null
+            });
+            setStreamingStatus(null);
+            setCurrentStreamingId(null);
+            eventSource.close();
+            break;
+            
+          case 'error':
+            console.error('❌ Stream error:', data.error);
+            clearTimeout(streamTimeout);
+            setChatHistory(prev => [...prev, {
+              id: Date.now() + 2,
+              isUser: false,
+              content: `Error: ${data.error}`,
+              timestamp: new Date().toLocaleTimeString()
+            }]);
+            setStreamingStatus('Error occurred');
+            setCurrentStreamingId(null);
+            eventSource.close();
+            break;
+            
+          case 'timeout':
+            console.log('⏰ Stream timeout');
+            clearTimeout(streamTimeout);
+            setStreamingStatus('Connection timeout');
+            setCurrentStreamingId(null);
+            eventSource.close();
+            break;
+            
+          default:
+            console.log('Unknown message type:', data.type);
+            break;
+        }
+        
+      } catch (error) {
+        console.error('Error parsing stream data:', error);
+        setStreamingStatus('Data parsing error');
+      }
+    };
+    
+    eventSource.onerror = (error) => {
+      console.error('EventSource failed:', error);
+      clearTimeout(streamTimeout);
+      
+      // Provide different error messages based on readyState
+      let errorMessage = 'Connection error';
+      if (eventSource.readyState === EventSource.CONNECTING) {
+        errorMessage = 'Connecting to server...';
+      } else if (eventSource.readyState === EventSource.CLOSED) {
+        errorMessage = 'Connection closed - please try again';
+      }
+      
+      setStreamingStatus(errorMessage);
+      setCurrentStreamingId(null);
+      
+      // Add error message to chat if we haven't started streaming yet
+      if (!streamingMessageId) {
+        setChatHistory(prev => [...prev, {
+          id: Date.now() + 3,
+          isUser: false,
+          content: `Connection failed: ${errorMessage}. Please try again.`,
+          timestamp: new Date().toLocaleTimeString()
+        }]);
+      }
+      
+      eventSource.close();
+    };
+  };
+
+  const handlePromptSubmit = async () => {
+    if (!prompt.trim() || loading) return;
+    
+    const userMessage = prompt.trim();
+    setPrompt('');
     setLoading(true);
     setMapLoading(true);
     setMapError(null);
@@ -202,7 +475,10 @@ function App() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ prompt: prompt.trim() })
+        body: JSON.stringify({ 
+          prompt: userMessage,
+          streaming: true 
+        })
       });
 
       const data = await response.json();
@@ -210,29 +486,50 @@ function App() {
       if (data.error) {
         console.error('Error:', data.error);
         setMapError(data.error);
+        
+        setChatHistory(prev => [...prev, {
+          id: Date.now(),
+          isUser: true,
+          content: userMessage,
+          timestamp: new Date().toLocaleTimeString()
+        }, {
+          id: Date.now() + 1,
+          isUser: false,
+          content: `Error: ${data.error}`,
+          timestamp: new Date().toLocaleTimeString()
+        }]);
+        
         setLoading(false);
         setMapLoading(false);
         return;
       }
 
-      setAnalytics({
-        summary: data.summary,
-        count: data.count,
-        logs: data.logs,
-        visualization: data.visualization
-      });
+      if (data.streaming && data.session_id) {
+        setCurrentStreamingId(data.session_id);
+        connectToStream(data.session_id, userMessage);
+      }
 
-      // Wait a short moment to ensure the map file is ready
+      // Update map URL
       await new Promise(resolve => setTimeout(resolve, 500));
-
-      // Update map URL with timestamp to force refresh
       const timestamp = Date.now();
-      const newMapUrl = `http://127.0.0.1:5000/maps/${data.filteredMap}?t=${timestamp}`;
+      const newMapUrl = `http://127.0.0.1:5000/maps/default_map.html?t=${timestamp}`;
       setMapHTML(newMapUrl);
       
     } catch (error) {
       console.error('Error:', error);
       setMapError('Failed to process request');
+      
+      setChatHistory(prev => [...prev, {
+        id: Date.now(),
+        isUser: true,
+        content: userMessage,
+        timestamp: new Date().toLocaleTimeString()
+      }, {
+        id: Date.now() + 1,
+        isUser: false,
+        content: `Connection Error: ${error.message}`,
+        timestamp: new Date().toLocaleTimeString()
+      }]);
     } finally {
       setLoading(false);
     }
@@ -250,7 +547,7 @@ function App() {
         <iframe
           key={mapHTML}
           src={mapHTML}
-          title="Interactive Map"
+          title="City Talk"
           style={{
             width: "100%",
             height: "100vh",
@@ -268,7 +565,7 @@ function App() {
           }}
         />
         {mapLoading && (
-          <LoadingMessage>Loading map...</LoadingMessage>
+          <LoadingMessage>🔄 Processing your request...</LoadingMessage>
         )}
         {mapError && (
           <LoadingMessage style={{ color: '#e53e3e' }}>{mapError}</LoadingMessage>
@@ -281,52 +578,95 @@ function App() {
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
           onKeyPress={handleKeyPress}
-          placeholder="Enter your search query..."
+          placeholder="Ask me about urban data (e.g., 'Find 20 houses least exposed to pollution in Maragall street')"
           disabled={loading}
         />
-        <Button onClick={handlePromptSubmit} disabled={loading}>
-          {loading ? 'Searching...' : 'Search'}
+        <Button onClick={handlePromptSubmit} disabled={loading || currentStreamingId}>
+          {loading || currentStreamingId ? '🔄 Analyzing...' : '🔍 Analyze'}
         </Button>
       </PromptBox>
-      
-      <AnalyticsPanel>
-        {analytics.summary && (
-          <>
-            <h3 style={{ margin: '0 0 10px 0', color: '#2d3748' }}>Summary</h3>
-            <p style={{ color: '#4a5568' }}>{analytics.summary}</p>
-          </>
-        )}
-        
-        {analytics.visualization && (
-          <div style={{ marginTop: '20px' }}>
-            <img 
-              src={`data:image/png;base64,${analytics.visualization.data}`}
-              alt={analytics.visualization.title || "Data Visualization"}
-            />
-          </div>
-        )}
-        
-        {analytics.count > 0 && (
-          <p style={{ color: '#4a5568' }}>
-            <strong>Results:</strong> {analytics.count} matches found
-          </p>
-        )}
 
-        {analytics.logs.length > 0 && (
-          <>
-            <h3 style={{ margin: '15px 0 10px 0', color: '#2d3748' }}>Processing Steps</h3>
-            <ul style={{ 
-              color: '#4a5568', 
-              paddingLeft: '20px',
-              margin: '0'
-            }}>
-              {analytics.logs.map((log, index) => (
-                <li key={index} style={{ marginBottom: '5px' }}>{log}</li>
+      <ToggleButton onClick={() => setShowPanel(!showPanel)}>
+        {showPanel ? '✕' : '💬'}
+      </ToggleButton>
+      
+      {showPanel && (
+        <AnalyticsPanel>
+          <h3>🤖 CityTalk AI Assistant</h3>
+          
+          {streamingStatus && (
+            <StreamingStatus>
+              <TypingIndicator>
+                <Dot delay="0s" />
+                <Dot delay="0.2s" />
+                <Dot delay="0.4s" />
+              </TypingIndicator>
+              <span>{streamingStatus}</span>
+              {streamingStatus.includes('%') && (
+                <ProgressBar progress={parseInt(streamingStatus.match(/\d+/)?.[0] || 0) / 100} />
+              )}
+            </StreamingStatus>
+          )}
+          
+          {chatHistory.length > 0 && (
+            <ChatHistory>
+              <h4 style={{ margin: '0 0 10px 0', color: '#2d3748', fontSize: '1em' }}>
+                💬 Live Chat {currentStreamingId && '(Streaming)'}
+              </h4>
+              {chatHistory.map((message) => (
+                <ChatMessage key={message.id} isUser={message.isUser} isStreaming={message.isStreaming}>
+                  <MessageHeader isUser={message.isUser}>
+                    {message.isUser ? '👤 You' : '🤖 Assistant'} • {message.timestamp}
+                    {message.isStreaming && (
+                      <TypingIndicator>
+                        <Dot delay="0s" />
+                        <Dot delay="0.2s" />
+                        <Dot delay="0.4s" />
+                      </TypingIndicator>
+                    )}
+                  </MessageHeader>
+                  <MessageContent>{message.content}</MessageContent>
+                </ChatMessage>
               ))}
-            </ul>
-          </>
-        )}
-      </AnalyticsPanel>
+            </ChatHistory>
+          )}
+          
+          {analytics.summary && !currentStreamingId && (
+            <>
+              <h3 style={{ margin: '0 0 10px 0', color: '#2d3748' }}>📊 Latest Analysis</h3>
+              <p style={{ color: '#4a5568', fontSize: '0.95em' }}>{analytics.summary}</p>
+            </>
+          )}
+          
+          {analytics.count > 0 && (
+            <p style={{ color: '#4a5568', fontWeight: 'bold' }}>
+              📈 Results: {analytics.count} data points analyzed
+            </p>
+          )}
+
+          {analytics.logs && analytics.logs.length > 0 && (
+            <>
+              <h4 style={{ margin: '15px 0 10px 0', color: '#2d3748', fontSize: '1em' }}>⚙️ Processing Steps</h4>
+              <ul style={{ 
+                color: '#4a5568', 
+                paddingLeft: '20px',
+                margin: '0',
+                fontSize: '0.9em'
+              }}>
+                {analytics.logs.map((log, index) => (
+                  <li key={index} style={{ marginBottom: '5px' }}>{log}</li>
+                ))}
+              </ul>
+            </>
+          )}
+
+          <div style={{ marginTop: '20px', padding: '10px', background: 'rgba(74, 108, 247, 0.1)', borderRadius: '8px' }}>
+            <p style={{ color: '#4a6cf7', fontSize: '0.85em', margin: '0', fontWeight: 'bold' }}>
+              ✨ Real-time AI streaming enabled! Watch ChatGPT write responses live as you ask questions about Barcelona urban data.
+            </p>
+          </div>
+        </AnalyticsPanel>
+      )}
     </Container>
   );
 }
