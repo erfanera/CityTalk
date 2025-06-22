@@ -59,30 +59,9 @@ class StreamingHybridAssistant:
                 print("🔄 Falling back to demo mode...")
         
         # Fallback to demo mode
-        self.setup_demo_mode()
-    
-    def setup_demo_mode(self):
-        """Setup demo mode with simulated data"""
-        self.mode = "demo"
         
-        # Count real CSV files if available for demo realism
-        try:
-            data_dir = os.path.join("..", "Data")
-            if not os.path.exists(data_dir):
-                data_dir = "Data"
-            
-            if os.path.exists(data_dir):
-                csv_files = [f for f in os.listdir(data_dir) if f.endswith(".csv")]
-                self.file_count = len(csv_files)
-                print(f"🎭 Demo mode initialized with {self.file_count} CSV files detected")
-            else:
-                self.file_count = 5  # Default demo count
-                print("🎭 Demo mode initialized (no data directory found)")
-                
-        except Exception as e:
-            self.file_count = 5
-            print(f"🎭 Demo mode initialized with default settings: {e}")
     
+   
     def process_query_streaming(self, user_query, session_id):
         """Process query with real-time streaming to frontend"""
         try:
@@ -152,57 +131,7 @@ class StreamingHybridAssistant:
         thread = threading.Thread(target=stream_thread)
         thread.start()
     
-    def _stream_demo_response(self, user_query, session_id):
-        """Stream demo response with realistic typing effect"""
-        def stream_thread():
-            try:
-                queue = streaming_sessions[session_id]
-                
-                # Send initial status
-                queue.put({
-                    'type': 'status',
-                    'message': '🎭 Demo Assistant analyzing...'
-                })
-                
-                time.sleep(1)  # Initial processing delay
-                
-                # Get demo response
-                demo_result = self._get_demo_response(user_query)
-                response = demo_result['response']
-                
-                queue.put({
-                    'type': 'start',
-                    'message': '🤖 Assistant is writing...'
-                })
-                
-                # Stream the response word by word
-                words = response.split()
-                current_text = ""
-                
-                for i, word in enumerate(words):
-                    current_text += word + " "
-                    queue.put({
-                        'type': 'content',
-                        'content': current_text,
-                        'progress': (i + 1) / len(words)
-                    })
-                    time.sleep(random.uniform(0.03, 0.08))  # Realistic typing speed
-                
-                queue.put({
-                    'type': 'complete',
-                    'final_content': response,
-                    'run_id': demo_result['run_id']
-                })
-                
-            except Exception as e:
-                queue.put({
-                    'type': 'error',
-                    'error': f'Demo streaming error: {str(e)}'
-                })
-        
-        # Start streaming in background thread
-        thread = threading.Thread(target=stream_thread)
-        thread.start()
+
     
     def _send_stream_error(self, session_id, error_msg):
         """Send error to streaming session"""
@@ -212,87 +141,7 @@ class StreamingHybridAssistant:
                 'error': error_msg
             })
     
-    def _get_demo_response(self, user_query):
-        """Get demo response (same as before)"""
-        query_lower = user_query.lower()
-        
-        if any(word in query_lower for word in ['pollution', 'air quality', 'contamination']):
-            response = """🏭 **Air Pollution Analysis - Barcelona**
 
-**Data Processing Results:**
-```python
-import pandas as pd
-import numpy as np
-
-# Load and analyze pollution data
-pollution_df = pd.read_csv('air_pollution_levels.csv')
-barcelona_data = pollution_df[pollution_df['city'] == 'Barcelona']
-print(f"Total monitoring stations: {len(barcelona_data)}")
-```
-
-**Key Findings:**
-- 📊 Analyzed 3,847 pollution measurements
-- 🏙️ 15 monitoring stations across Barcelona  
-- 📈 PM2.5 levels: Eixample district highest (18.2 μg/m³)
-- 🌿 Cleanest areas: Park Güell vicinity (12.1 μg/m³)
-- 🛣️ Maragall street: Moderate levels (15.3 μg/m³)
-
-**Recommendations for Low-Pollution Housing:**
-1. Areas near Collserola Natural Park
-2. Residential zones away from major traffic arteries
-3. Properties with good ventilation systems
-4. Avoid proximity to industrial zones
-
-**Code Analysis:**
-```python
-# Filter for Maragall street area
-maragall_area = barcelona_data[
-    (barcelona_data['latitude'].between(41.4100, 41.4200)) &
-    (barcelona_data['longitude'].between(2.1600, 2.1700))
-]
-low_pollution_properties = maragall_area[maragall_area['pm25'] < 16.0]
-print(f"Found {len(low_pollution_properties)} suitable properties")
-```"""
-        else:
-            response = f"""🏙️ **Urban Data Analysis** - "{user_query}"
-
-**Data Processing Pipeline:**
-```python
-import pandas as pd
-import numpy as np
-from geopy.distance import geodesic
-
-# Load Barcelona datasets
-datasets = {{
-    'pollution': pd.read_csv('air_pollution_levels.csv'),
-    'bicing': pd.read_csv('bicing.csv'),
-    'housing': pd.read_csv('Houses.csv'),
-    'transport': pd.read_csv('PublicTransport.csv'),
-    'bus_stops': pd.read_csv('ESTACIONS_BUS.csv')
-}}
-
-# Process query: {user_query}
-results = analyze_urban_data(datasets, query="{user_query}")
-```
-
-**Available Datasets:**
-- 🏭 **Air Pollution**: 3,847 measurements, 15 stations
-- 🚴 **Bicing**: 467 bike stations, real-time availability
-- 🏠 **Housing**: 2,341 properties, price & location data
-- 🚇 **Transport**: Metro, bus, tram network data
-- 🚌 **Bus Stops**: 2,800+ stops with frequency data
-
-**Analysis Results:**
-Based on the available data, I've identified relevant patterns and insights for your query. The analysis shows correlations between location, accessibility, and quality of life indicators in Barcelona.
-
-**Recommendations:**
-For more specific analysis, please provide details about your area of interest, time period, or specific metrics you'd like to explore."""
-        
-        return {
-            'success': True,
-            'response': response,
-            'run_id': f"demo_run_{random.randint(1000, 9999)}"
-        }
     
     def get_status(self):
         """Get current assistant status"""
@@ -304,7 +153,7 @@ For more specific analysis, please provide details about your area of interest, 
         }
 
 # Initialize the streaming assistant
-api_key = get_openai_api_key()
+api_key ="test"
 chat_assistant = StreamingHybridAssistant(api_key)
 
 @app.route('/stream/<session_id>')

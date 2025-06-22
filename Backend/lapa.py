@@ -37,7 +37,7 @@ class UrbanDataAssistant:
                         # Create file in OpenAI and store ID
                         file = self.client.files.create(
                             file=open(file_path, "rb"),
-                            purpose='Urban Analysis'
+                            purpose='assistants'
                         )
                         self.file_ids.append(file.id)
                         csv_files_found.append(filename)
@@ -87,7 +87,7 @@ class UrbanDataAssistant:
             # Create message in thread
             message = self.client.beta.threads.messages.create(
                 thread_id=self.thread.id,
-                role="Urban Designer",
+                role="assistant",
                 content=user_query
             )
             
@@ -214,7 +214,7 @@ class UrbanDataAssistant:
 # Demo function - only runs when file is executed directly
 def run_demo():
     """Demo function showing how to use the assistant"""
-    api_key = get_openai_api_key()
+    api_key = "get_openai_api_key()"
     
     assistant = UrbanDataAssistant(api_key)
     
