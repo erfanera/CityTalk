@@ -3,9 +3,12 @@ from typing_extensions import override
 from openai import AssistantEventHandler
 import os
 import time
+from config import get_openai_api_key
 
 class UrbanDataAssistant:
-    def __init__(self, api_key):
+    def __init__(self, api_key=None):
+        if api_key is None:
+            api_key = get_openai_api_key()
         self.api_key = api_key
         self.client = OpenAI(api_key=api_key)
         self.assistant = None
@@ -211,7 +214,7 @@ class UrbanDataAssistant:
 # Demo function - only runs when file is executed directly
 def run_demo():
     """Demo function showing how to use the assistant"""
-    api_key = "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"
+    api_key = get_openai_api_key()
     
     assistant = UrbanDataAssistant(api_key)
     

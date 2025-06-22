@@ -9,6 +9,7 @@ import random
 import json
 import threading
 from queue import Queue
+from config import get_openai_api_key
 
 # Try to import the real assistant, fallback to demo if there are issues
 try:
@@ -303,7 +304,7 @@ For more specific analysis, please provide details about your area of interest, 
         }
 
 # Initialize the streaming assistant
-api_key = "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"
+api_key = get_openai_api_key()
 chat_assistant = StreamingHybridAssistant(api_key)
 
 @app.route('/stream/<session_id>')

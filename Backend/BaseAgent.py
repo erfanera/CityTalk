@@ -1,13 +1,15 @@
-api_key= "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"
 from openai import OpenAI
 import json
+from config import get_openai_api_key
 
 
 class BaseAgent:
-    def __init__(self, api_key, model="gpt-4", personality="You are a helpful assistant", pre_prompt="", temperature=0.1):
+    def __init__(self, api_key=None, model="gpt-4", personality="You are a helpful assistant", pre_prompt="", temperature=0.1):
         """
         Initialize OpenAI connection and settings
         """
+        if api_key is None:
+            api_key = get_openai_api_key()
         self.client = OpenAI(api_key=api_key)
         self.model = model
         self.personality = personality

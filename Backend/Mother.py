@@ -7,9 +7,10 @@ import pandas as pd
 # from MainAgent import MainAgent
 from lapa import MainAgent
 from Viz01 import save_kepler_map, display_html_with_custom_style
+from config import get_openai_api_key
 
 # 1️⃣ Initialize agents
-api_key = "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"  # make sure it's valid
+api_key = get_openai_api_key()
 
 # 2️⃣ User prompt
 user_query = "find 20 houses that are least exposed to polution in  Maragall street in barcelona "
